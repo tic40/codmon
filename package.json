@@ -2,6 +2,7 @@
   "name": "codomon",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.30.3",
   "scripts": {
     "act": "act -j playwright --secret-file .secrets"
   },
