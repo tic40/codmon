@@ -28,6 +28,7 @@ function loadSeenIds(): Set<string> {
 }
 
 function saveSeenIds(ids: Set<string>) {
+  fs.mkdirSync(path.dirname(SEEN_POSTS_PATH), { recursive: true });
   fs.writeFileSync(SEEN_POSTS_PATH, JSON.stringify([...ids], null, 2) + "\n");
 }
 
