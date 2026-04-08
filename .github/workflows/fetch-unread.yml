@@ -1,12 +1,13 @@
-name: Contact Comment
+name: Fetch Unread Posts
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "50 23 * * 0-4" # 平日 8:50 JST
+    - cron: "0 3 * * 1-5"  # 平日 12:00 JST
+    - cron: "30 7 * * 1-5" # 平日 16:30 JST
 
 jobs:
-  contact-comment:
+  fetch-unread:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -22,7 +23,12 @@ jobs:
 
       - run: pnpm exec playwright install --with-deps chromium
 
-      - run: pnpm exec playwright test -g "contact comment"
+      - uses: actions/cache@v4
+        with:
+          path: data/seen-posts.json
+          key: seen-posts
+
+      - run: pnpm exec playwright test -g "fetch unread"
         env:
           CODMON_EMAIL: ${{ secrets.CODMON_EMAIL }}
           CODMON_PW: ${{ secrets.CODMON_PW }}

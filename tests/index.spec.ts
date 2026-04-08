@@ -72,7 +72,7 @@ function getCurrentDate(): string {
   return `${y}-${m}-${d}`;
 }
 
-test("login and get contact comment", async ({ page }) => {
+test("get contact comment", async ({ page }) => {
   await login(page);
 
   await page.goto("https://parents.codmon.com/contact", {
@@ -167,12 +167,14 @@ test("fetch unread home posts", async ({ page }) => {
   if (newPosts.length === 0) {
     console.log("新しいお知らせはありません");
   } else {
-    console.log(`未読のお知らせ: ${newPosts.length}件`);
-    for (const post of newPosts) {
-      console.log("---");
-      console.log(`[${post.type}] ${post.date}`);
-      console.log(`タイトル: ${post.title}`);
-      console.log(`本文: ${post.body}`);
+    const lines = newPosts.map(
+      (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n${p.body}`
+    );
+    const message = `新しいお知らせ ${newPosts.length}件\n\n${lines.join("\n---\n")}`;
+    console.log(message);
+
+    if (SLACK_WEBHOOK_URL) {
+      await sendToSlack(message);
     }
   }
 
