@@ -32,8 +32,8 @@ function saveSeenIds(ids: Set<string>) {
   fs.writeFileSync(SEEN_POSTS_PATH, JSON.stringify([...ids], null, 2) + "\n");
 }
 
-function postId(title: string, date: string): string {
-  return `${date}::${title}`;
+function postId(title: string, bodyPrefix: string): string {
+  return `${title}::${bodyPrefix.substring(0, 10)}`;
 }
 
 async function login(page: Page) {
@@ -124,10 +124,11 @@ test("fetch unread home posts", async ({ page }) => {
       type: el.querySelector(".timelineLabel")?.textContent?.trim() ?? "",
       date: el.querySelector(".homeCard_date")?.textContent?.trim() ?? "",
       title: el.querySelector(".homeCard__title")?.textContent?.trim() ?? "",
+      preview: el.querySelector(".homeCard_excerpt_content")?.textContent?.trim() ?? "",
     }));
   });
 
-  const unread = summaries.filter((s) => !seenIds.has(postId(s.title, s.date)));
+  const unread = summaries.filter((s) => !seenIds.has(postId(s.title, s.preview)));
   console.log(`記事数: ${summaries.length}, 未読: ${unread.length}`);
 
   const newPosts: Post[] = [];
@@ -157,7 +158,7 @@ test("fetch unread home posts", async ({ page }) => {
       type: item.type,
     });
 
-    seenIds.add(postId(item.title, item.date));
+    seenIds.add(postId(item.title, item.preview));
     await page.goto("https://parents.codmon.com/home", { waitUntil: "networkidle" });
     await page.getByRole("article").first().waitFor({ state: "attached", timeout: 15000 });
   }
@@ -167,7 +168,7 @@ test("fetch unread home posts", async ({ page }) => {
   if (newPosts.length === 0) {
     console.log("新しいお知らせはありません");
   } else {
-    const lines = [...newPosts].reverse().map(
+    const lines = newPosts.map(
       (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n${p.body}`
     );
     const message = `新しいお知らせ ${newPosts.length}件\n\n${lines.join("\n---\n")}`;
