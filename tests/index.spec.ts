@@ -52,11 +52,11 @@ async function login(page: Page) {
   await page.waitForURL(/\/(home|contact|timeline)/, { timeout: 30000 });
 }
 
-async function sendToSlack(username: string, text: string, channel: string) {
+async function sendToSlack(text: string) {
   const res = await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, text, channel }),
+    body: JSON.stringify({ text, channel: "#保育園" }),
   });
   if (!res.ok) {
     throw new Error(`Slack post failed: ${res.status}`);
@@ -94,8 +94,16 @@ test("login and get contact comment", async ({ page }) => {
     return col.nextElementSibling?.textContent?.trim() ?? null;
   });
 
-  console.log("コメント:", commentText);
-  expect(commentText).toBeTruthy();
+  const date = getCurrentDate();
+  const message = commentText
+    ? `📝 ${date} 連絡帳コメント\n${commentText}`
+    : `⚠️ ${date} 連絡帳が未記入です`;
+
+  console.log(message);
+
+  if (SLACK_WEBHOOK_URL) {
+    await sendToSlack(message);
+  }
 });
 
 test("fetch unread home posts", async ({ page }) => {
