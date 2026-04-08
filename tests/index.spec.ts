@@ -167,7 +167,7 @@ test("fetch unread home posts", async ({ page }) => {
   if (newPosts.length === 0) {
     console.log("新しいお知らせはありません");
   } else {
-    const lines = newPosts.map(
+    const lines = [...newPosts].reverse().map(
       (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n${p.body}`
     );
     const message = `新しいお知らせ ${newPosts.length}件\n\n${lines.join("\n---\n")}`;
