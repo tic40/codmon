@@ -1,4 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 
 const {
   CODMON_LOGIN_URL = "https://parents.codmon.com",
@@ -7,19 +9,46 @@ const {
   SLACK_WEBHOOK_URL = "",
 } = process.env;
 
+const SEEN_POSTS_PATH = path.resolve(__dirname, "../data/seen-posts.json");
+
+type Post = {
+  title: string;
+  body: string;
+  date: string;
+  type: string;
+};
+
+function loadSeenIds(): Set<string> {
+  try {
+    const data = JSON.parse(fs.readFileSync(SEEN_POSTS_PATH, "utf-8"));
+    return new Set(data);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeenIds(ids: Set<string>) {
+  fs.writeFileSync(SEEN_POSTS_PATH, JSON.stringify([...ids], null, 2) + "\n");
+}
+
+function postId(title: string, date: string): string {
+  return `${date}::${title}`;
+}
+
 async function login(page: Page) {
   await page.goto(CODMON_LOGIN_URL, { waitUntil: "networkidle" });
 
-  // 「すでにアカウントをお持ちの方」をクリックしてログインフォームへ遷移
-  await page.getByText("すでにアカウントをお持ちの方").click();
+  const alreadyHasAccount = page.getByText("すでにアカウントをお持ちの方");
+  if (await alreadyHasAccount.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await alreadyHasAccount.click();
+    await page.waitForLoadState("networkidle");
+  }
 
-  // ログインフォームに入力
   await page.getByPlaceholder("メールアドレス").fill(CODMON_EMAIL);
   await page.getByPlaceholder("パスワード").fill(CODMON_PW);
-  await page.getByText("ログインする").click();
 
-  // ログイン後のページ読み込みを待機
-  await page.waitForURL("**/home**", { timeout: 15000 });
+  await page.getByText("ログインする").click();
+  await page.waitForURL(/\/(home|contact|timeline)/, { timeout: 30000 });
 }
 
 async function sendToSlack(username: string, text: string, channel: string) {
@@ -42,14 +71,101 @@ function getCurrentDate(): string {
   return `${y}-${m}-${d}`;
 }
 
-test("login and get info", async ({ page }) => {
+test("login and get contact comment", async ({ page }) => {
   await login(page);
 
-  // TODO: ログイン後に取得したい情報のセレクタを追加
-  // 例: 連絡帳、お知らせ、スケジュールなど
-  const title = await page.title();
-  console.log("Page title:", title);
+  await page.goto("https://parents.codmon.com/contact", {
+    waitUntil: "networkidle",
+  });
 
-  // ページ内容のスクリーンショットを保存（デバッグ用）
-  await page.screenshot({ path: "test-results/after-login.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/contact-page.png",
+    fullPage: true,
+  });
+
+  const commentText = await page.evaluate(() => {
+    const label = document.querySelector(
+      "p.notebookPreview_item.notebookPreview_item-other"
+    );
+    if (!label) return null;
+    const col = label.closest("ons-col");
+    if (!col) return null;
+    return col.nextElementSibling?.textContent?.trim() ?? null;
+  });
+
+  console.log("コメント:", commentText);
+  expect(commentText).toBeTruthy();
+});
+
+test("fetch unread home posts", async ({ page }) => {
+  await login(page);
+
+  await page.goto("https://parents.codmon.com/home", {
+    waitUntil: "networkidle",
+  });
+
+  await page.getByRole("article").first().waitFor({ state: "attached", timeout: 15000 });
+
+  const seenIds = loadSeenIds();
+
+  const summaries = await page.evaluate(() => {
+    const cards = document.querySelectorAll("[role='article']");
+    return Array.from(cards).map((el, i) => ({
+      index: i,
+      type: el.querySelector(".timelineLabel")?.textContent?.trim() ?? "",
+      date: el.querySelector(".homeCard_date")?.textContent?.trim() ?? "",
+      title: el.querySelector(".homeCard__title")?.textContent?.trim() ?? "",
+    }));
+  });
+
+  const unread = summaries.filter((s) => !seenIds.has(postId(s.title, s.date)));
+  console.log(`記事数: ${summaries.length}, 未読: ${unread.length}`);
+
+  const newPosts: Post[] = [];
+  for (const item of unread) {
+    await page.evaluate((idx) => {
+      const cards = document.querySelectorAll("[role='article']");
+      (cards[idx] as HTMLElement)?.click();
+    }, item.index);
+
+    await page.waitForSelector(".timelineDetails_title", { timeout: 15000 });
+    await page.waitForSelector(".common__htmlContent", { timeout: 5000 }).catch(() => {});
+    await page.waitForLoadState("networkidle");
+
+    const detail = await page.evaluate(() => {
+      const titleEl = document.querySelector(".timelineDetails_title");
+      const bodyEl = document.querySelector(".common__htmlContent");
+      return {
+        title: titleEl?.textContent?.trim() ?? "",
+        body: bodyEl?.textContent?.trim() ?? "",
+      };
+    });
+
+    newPosts.push({
+      title: detail.title || item.title,
+      body: detail.body,
+      date: item.date,
+      type: item.type,
+    });
+
+    seenIds.add(postId(item.title, item.date));
+    await page.goto("https://parents.codmon.com/home", { waitUntil: "networkidle" });
+    await page.getByRole("article").first().waitFor({ state: "attached", timeout: 15000 });
+  }
+
+  saveSeenIds(seenIds);
+
+  if (newPosts.length === 0) {
+    console.log("新しいお知らせはありません");
+  } else {
+    console.log(`未読のお知らせ: ${newPosts.length}件`);
+    for (const post of newPosts) {
+      console.log("---");
+      console.log(`[${post.type}] ${post.date}`);
+      console.log(`タイトル: ${post.title}`);
+      console.log(`本文: ${post.body}`);
+    }
+  }
+
+  expect(seenIds.size).toBeGreaterThan(0);
 });

@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "scripts": {
-    "act": "act -j playwright --secret-file .secrets"
+    "act": "act -j playwright --secret-file .secrets --container-architecture linux/amd64"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
