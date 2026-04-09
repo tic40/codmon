@@ -3,7 +3,7 @@ name: Contact Comment
 on:
   workflow_dispatch:
   schedule:
-    - cron: "50 23 * * 0-4" # 平日 8:50 JST
+    - cron: "45 23 * * 0-4" # 平日 8:45 JST
 
 jobs:
   contact-comment:
