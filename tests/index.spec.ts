@@ -96,7 +96,7 @@ test("get contact comment", async ({ page }) => {
 
   const date = getCurrentDate();
   const message = commentText
-    ? `📝 ${date} 連絡帳コメント\n${commentText}`
+    ? `📝 ${date} 連絡帳コメント\n\`\`\`${commentText}\`\`\``
     : `⚠️ ${date} 連絡帳が未記入です`;
 
   console.log(message);
@@ -169,7 +169,7 @@ test("fetch unread home posts", async ({ page }) => {
     console.log("新しいお知らせはありません");
   } else {
     const lines = newPosts.map(
-      (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n${p.body}`
+      (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n\`\`\`${p.body}\`\`\``
     );
     const message = `新しいお知らせ ${newPosts.length}件\n\n${lines.join("\n---\n")}`;
     console.log(message);
