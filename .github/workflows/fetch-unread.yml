@@ -3,8 +3,8 @@ name: Fetch Unread Posts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 2 * * 1-5"  # 平日 11:45 JST
-    - cron: "15 7 * * 1-5" # 平日 16:15 JST
+    - cron: "42 2 * * 1-5"  # 平日 11:42 JST
+    - cron: "17 7 * * 1-5" # 平日 16:17 JST
 
 jobs:
   fetch-unread:
