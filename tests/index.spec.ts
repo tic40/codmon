@@ -128,7 +128,9 @@ test("fetch unread home posts", async ({ page }) => {
     }));
   });
 
-  const unread = summaries.filter((s) => !seenIds.has(postId(s.title, s.preview)));
+  const unread = summaries.filter(
+    (s) => s.type !== "承認連絡" && !seenIds.has(postId(s.title, s.preview))
+  );
   console.log(`記事数: ${summaries.length}, 未読: ${unread.length}`);
 
   const newPosts: Post[] = [];
