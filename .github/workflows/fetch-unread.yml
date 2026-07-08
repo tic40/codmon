@@ -3,9 +3,9 @@ name: Fetch Unread Posts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 2 * * 1-5"  # 平日 11:45 JST
-    - cron: "15 7 * * 1-5" # 平日 16:15 JST
-    - cron: "30 9 * * 1-5" # 平日 18:30 JST
+    # 平日 6:00〜21:00 JST の毎時実行 (JST = UTC+9)
+    - cron: "0 21-23 * * 0-4" # 平日 6:00〜8:00 JST
+    - cron: "0 0-12 * * 1-5"  # 平日 9:00〜21:00 JST
 
 jobs:
   fetch-unread:
