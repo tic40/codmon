@@ -128,8 +128,14 @@ test("fetch unread home posts", async ({ page }) => {
     }));
   });
 
+  // 「確認完了通知」等の種別は詳細画面を持たずクリックしても遷移しないため除外する。
+  // 詳細画面を持つお知らせはタイトルを持つので、タイトル無しも安全策として除外する。
+  const NO_DETAIL_TYPES = ["確認完了通知", "承認連絡"];
   const unread = summaries.filter(
-    (s) => s.type !== "承認連絡" && !seenIds.has(postId(s.title, s.preview))
+    (s) =>
+      !NO_DETAIL_TYPES.includes(s.type) &&
+      s.title !== "" &&
+      !seenIds.has(postId(s.title, s.preview))
   );
   console.log(`記事数: ${summaries.length}, 未読: ${unread.length}`);
 
