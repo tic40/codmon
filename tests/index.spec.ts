@@ -86,6 +86,9 @@ test("get contact comment", async ({ page }) => {
     waitUntil: "networkidle",
   });
 
+  // 未ログイン等で連絡帳画面が描画されていない場合に「未記入」と誤通知しないよう失敗させる
+  await page.locator(".notebook_tab").first().waitFor({ state: "visible", timeout: 15000 });
+
   await page.screenshot({
     path: "test-results/contact-page.png",
     fullPage: true,
