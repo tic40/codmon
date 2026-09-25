@@ -48,8 +48,15 @@ async function login(page: Page) {
   await page.getByPlaceholder("メールアドレス").fill(CODMON_EMAIL);
   await page.getByPlaceholder("パスワード").fill(CODMON_PW);
 
+  // ログイン前から /home にリダイレクトされるため URL ではなくログイン API の完了を待つ
+  const loginRes = page.waitForResponse(
+    (r) => r.url().includes("/api/v2/parent/login") && r.request().method() === "POST",
+    { timeout: 30000 }
+  );
   await page.getByText("ログインする").click();
-  await page.waitForURL(/\/(home|contact|timeline)/, { timeout: 30000 });
+  const res = await loginRes;
+  if (!res.ok()) throw new Error(`Login failed: ${res.status()}`);
+  await page.getByPlaceholder("パスワード").waitFor({ state: "detached", timeout: 30000 });
 }
 
 async function sendToSlack(text: string) {
