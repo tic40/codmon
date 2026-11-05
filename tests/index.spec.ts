@@ -9,6 +9,9 @@ const {
   SLACK_WEBHOOK_URL = "",
 } = process.env;
 
+// codmon の DOM 変更で本文クラスが .common__htmlContent から .richTextContent に変わったため両対応
+const BODY_SELECTOR = ".richTextContent, .common__htmlContent";
+
 const SEEN_POSTS_PATH = path.resolve(__dirname, "../data/seen-posts.json");
 
 type Post = {
@@ -157,17 +160,17 @@ test("fetch unread home posts", async ({ page }) => {
     }, item.index);
 
     await page.waitForSelector(".timelineDetails_title", { timeout: 15000 });
-    await page.waitForSelector(".common__htmlContent", { timeout: 5000 }).catch(() => {});
+    await page.waitForSelector(BODY_SELECTOR, { timeout: 5000 }).catch(() => {});
     await page.waitForLoadState("networkidle");
 
-    const detail = await page.evaluate(() => {
+    const detail = await page.evaluate((bodySelector) => {
       const titleEl = document.querySelector(".timelineDetails_title");
-      const bodyEl = document.querySelector(".common__htmlContent");
+      const bodyEl = document.querySelector(bodySelector);
       return {
         title: titleEl?.textContent?.trim() ?? "",
         body: bodyEl?.textContent?.trim() ?? "",
       };
-    });
+    }, BODY_SELECTOR);
 
     newPosts.push({
       title: detail.title || item.title,
