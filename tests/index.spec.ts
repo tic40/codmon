@@ -1,6 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { TimelineItem, toPosts, parseSeen, serializeSeen, planNotification, formatMessage } from "./lib/timeline";
 
 const {
   CODMON_LOGIN_URL = "https://parents.codmon.com",
@@ -9,34 +10,19 @@ const {
   SLACK_WEBHOOK_URL = "",
 } = process.env;
 
-// codmon の DOM 変更で本文クラスが .common__htmlContent から .richTextContent に変わったため両対応
-const BODY_SELECTOR = ".richTextContent, .common__htmlContent";
-
 const SEEN_POSTS_PATH = path.resolve(__dirname, "../data/seen-posts.json");
 
-type Post = {
-  title: string;
-  body: string;
-  date: string;
-  type: string;
-};
-
-function loadSeenIds(): Set<string> {
+function loadSeen(): Set<string> | null {
   try {
-    const data = JSON.parse(fs.readFileSync(SEEN_POSTS_PATH, "utf-8"));
-    return new Set(data);
+    return parseSeen(JSON.parse(fs.readFileSync(SEEN_POSTS_PATH, "utf-8")));
   } catch {
-    return new Set();
+    return null;
   }
 }
 
-function saveSeenIds(ids: Set<string>) {
+function saveSeen(ids: Set<string>) {
   fs.mkdirSync(path.dirname(SEEN_POSTS_PATH), { recursive: true });
-  fs.writeFileSync(SEEN_POSTS_PATH, JSON.stringify([...ids], null, 2) + "\n");
-}
-
-function postId(title: string, bodyPrefix: string): string {
-  return `${title}::${bodyPrefix.substring(0, 10)}`;
+  fs.writeFileSync(SEEN_POSTS_PATH, serializeSeen(ids));
 }
 
 async function login(page: Page) {
@@ -122,83 +108,31 @@ test("get contact comment", async ({ page }) => {
 test("fetch unread home posts", async ({ page }) => {
   await login(page);
 
-  await page.goto("https://parents.codmon.com/home", {
-    waitUntil: "networkidle",
-  });
-
-  await page.getByRole("article").first().waitFor({ state: "attached", timeout: 15000 });
-
-  const seenIds = loadSeenIds();
-
-  const summaries = await page.evaluate(() => {
-    const cards = document.querySelectorAll("[role='article']");
-    return Array.from(cards).map((el, i) => ({
-      index: i,
-      type: el.querySelector(".timelineLabel")?.textContent?.trim() ?? "",
-      date: el.querySelector(".homeCard_date")?.textContent?.trim() ?? "",
-      title: el.querySelector(".homeCard__title")?.textContent?.trim() ?? "",
-      preview: el.querySelector(".homeCard_excerpt_content")?.textContent?.trim() ?? "",
-    }));
-  });
-
-  // 「確認完了通知」等の種別は詳細画面を持たずクリックしても遷移しないため除外する。
-  // 詳細画面を持つお知らせはタイトルを持つので、タイトル無しも安全策として除外する。
-  const NO_DETAIL_TYPES = ["確認完了通知", "承認連絡"];
-  const unread = summaries.filter(
-    (s) =>
-      !NO_DETAIL_TYPES.includes(s.type) &&
-      s.title !== "" &&
-      !seenIds.has(postId(s.title, s.preview))
+  const timelineRes = page.waitForResponse(
+    (r) => r.url().includes("/api/v2/parent/timeline/") && r.request().method() === "GET",
+    { timeout: 30000 }
   );
-  console.log(`記事数: ${summaries.length}, 未読: ${unread.length}`);
+  await page.goto("https://parents.codmon.com/home", { waitUntil: "networkidle" });
+  const res = await timelineRes;
+  if (!res.ok()) throw new Error(`Timeline fetch failed: ${res.status()}`);
+  const json = (await res.json()) as { success: boolean; data: TimelineItem[] };
+  if (!json.success || !Array.isArray(json.data)) throw new Error("Unexpected timeline response");
 
-  const newPosts: Post[] = [];
-  for (const item of unread) {
-    await page.evaluate((idx) => {
-      const cards = document.querySelectorAll("[role='article']");
-      (cards[idx] as HTMLElement)?.click();
-    }, item.index);
+  const seen = loadSeen();
+  const posts = toPosts(json.data);
+  const plan = planNotification(posts, seen);
+  console.log(`記事数: ${json.data.length}, 対象: ${posts.length}, 未読: ${plan.toNotify.length}${seen ? "" : " (既読情報なしのため初期化)"}`);
 
-    await page.waitForSelector(".timelineDetails_title", { timeout: 15000 });
-    await page.waitForSelector(BODY_SELECTOR, { timeout: 5000 }).catch(() => {});
-    await page.waitForLoadState("networkidle");
-
-    const detail = await page.evaluate((bodySelector) => {
-      const titleEl = document.querySelector(".timelineDetails_title");
-      const bodyEl = document.querySelector(bodySelector);
-      return {
-        title: titleEl?.textContent?.trim() ?? "",
-        body: bodyEl?.textContent?.trim() ?? "",
-      };
-    }, BODY_SELECTOR);
-
-    newPosts.push({
-      title: detail.title || item.title,
-      body: detail.body,
-      date: item.date,
-      type: item.type,
-    });
-
-    seenIds.add(postId(item.title, item.preview));
-    await page.goto("https://parents.codmon.com/home", { waitUntil: "networkidle" });
-    await page.getByRole("article").first().waitFor({ state: "attached", timeout: 15000 });
-  }
-
-  saveSeenIds(seenIds);
-
-  if (newPosts.length === 0) {
+  if (plan.toNotify.length === 0) {
     console.log("新しいお知らせはありません");
   } else {
-    const lines = newPosts.map(
-      (p) => `📢 [${p.type}] ${p.date}\n*${p.title}*\n\`\`\`${p.body}\`\`\``
-    );
-    const message = `新しいお知らせ ${newPosts.length}件\n\n${lines.join("\n---\n")}`;
+    const message = formatMessage(plan.toNotify);
     console.log(message);
-
     if (SLACK_WEBHOOK_URL) {
       await sendToSlack(message);
     }
   }
 
-  expect(seenIds.size).toBeGreaterThan(0);
+  saveSeen(plan.seen);
+  expect(plan.seen.size).toBeGreaterThan(0);
 });
