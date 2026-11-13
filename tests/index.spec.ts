@@ -1,7 +1,8 @@
 import { test, expect, Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { TimelineItem, toPosts, parseSeen, serializeSeen, planNotification, formatMessage } from "./lib/timeline";
+import { toPosts, parseSeen, serializeSeen, planNotification, formatMessage } from "./lib/timeline";
+import { captureTimeline } from "./lib/timeline-response";
 
 const {
   CODMON_LOGIN_URL = "https://parents.codmon.com",
@@ -106,17 +107,12 @@ test("get contact comment", async ({ page }) => {
 });
 
 test("fetch unread home posts", async ({ page }) => {
+  // codmon はログイン完了時に SPA 自身が /home の timeline を取得するため、login 前に捕捉を仕掛ける。
+  // 取得後に page.goto を挟むと旧ドキュメントのレスポンスボディが破棄されて読めなくなる。
+  const timeline = await captureTimeline(page);
   await login(page);
 
-  const timelineRes = page.waitForResponse(
-    (r) => r.url().includes("/api/v2/parent/timeline/") && r.request().method() === "GET",
-    { timeout: 30000 }
-  );
-  await page.goto("https://parents.codmon.com/home", { waitUntil: "networkidle" });
-  const res = await timelineRes;
-  if (!res.ok()) throw new Error(`Timeline fetch failed: ${res.status()}`);
-  const json = (await res.json()) as { success: boolean; data: TimelineItem[] };
-  if (!json.success || !Array.isArray(json.data)) throw new Error("Unexpected timeline response");
+  const json = await timeline.json();
 
   const seen = loadSeen();
   const posts = toPosts(json.data);
